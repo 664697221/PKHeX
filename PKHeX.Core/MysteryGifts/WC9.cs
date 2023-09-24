@@ -127,6 +127,12 @@ public sealed class WC9 : DataMysteryGift, ILangNick, INature, ITeraType, IRibbo
     // Since we expose the 16bit (pk9) component values here, just adjust them accordingly with an inlined calc.
     public override uint ID32
     {
+        get => ReadUInt32LittleEndian(Data.AsSpan(CardStart + 0x18));
+        set => WriteUInt32LittleEndian(Data.AsSpan(CardStart + 0x18), value);
+    }
+
+    public uint ID32Old
+    {
         get => ReadUInt32LittleEndian(Data.AsSpan(CardStart + 0x18)) - (1000000u * (uint)CardID);
         set => WriteUInt32LittleEndian(Data.AsSpan(CardStart + 0x18), value + (1000000u * (uint)CardID));
     }
@@ -448,8 +454,7 @@ public sealed class WC9 : DataMysteryGift, ILangNick, INature, ITeraType, IRibbo
         var pk = new PK9
         {
             EncryptionConstant = EncryptionConstant != 0 ? EncryptionConstant : rnd.Rand32(),
-            TID16 = TID16,
-            SID16 = SID16,
+            ID32 = ID32,
             Species = Species,
             Form = Form,
             CurrentLevel = currentLevel,
@@ -506,14 +511,18 @@ public sealed class WC9 : DataMysteryGift, ILangNick, INature, ITeraType, IRibbo
             while (!CanBeReceivedByVersion(pk));
         }
 
+        var date = GetSuggestedDate();
+        pk.MetDate = date;
+
         if (OTGender >= 2)
         {
             pk.TID16 = tr.TID16;
             pk.SID16 = tr.SID16;
         }
-
-        var date = GetSuggestedDate();
-        pk.MetDate = date;
+        else if (IsID32FormatOld(date))
+        {
+            pk.ID32 = ID32Old;
+        }
 
         var nickname_language = GetLanguage(language);
         pk.Language = nickname_language != 0 ? nickname_language : tr.Language;
@@ -669,8 +678,8 @@ public sealed class WC9 : DataMysteryGift, ILangNick, INature, ITeraType, IRibbo
         {
             if (OTGender < 2)
             {
-                if (SID16 != pk.SID16) return false;
-                if (TID16 != pk.TID16) return false;
+                var expect = pk.MetDate is { } x && IsID32FormatOld(x) ? ID32Old : ID32;
+                if (expect != pk.ID32) return false;
                 if (OTGender != pk.OT_Gender) return false;
             }
 
@@ -753,6 +762,8 @@ public sealed class WC9 : DataMysteryGift, ILangNick, INature, ITeraType, IRibbo
             return true;
         return pk.PID == GetPID(pk, type);
     }
+
+    private static bool IsID32FormatOld(DateOnly x) => x <= new DateOnly(2023, 9, 13);
 
     private bool IsMatchLocation(PKM pk)
     {
